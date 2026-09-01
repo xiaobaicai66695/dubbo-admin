@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/dubbogo/go-zookeeper/zk"
-	"sigs.k8s.io/yaml"
 
 	"github.com/apache/dubbo-admin/pkg/common/bizerror"
 	"github.com/apache/dubbo-admin/pkg/common/constants"
@@ -30,6 +29,7 @@ import (
 	"github.com/apache/dubbo-admin/pkg/core/clients"
 	"github.com/apache/dubbo-admin/pkg/core/events"
 	"github.com/apache/dubbo-admin/pkg/core/logger"
+	meshresource "github.com/apache/dubbo-admin/pkg/core/resource/apis/mesh/v1alpha1"
 	coremodel "github.com/apache/dubbo-admin/pkg/core/resource/model"
 	"github.com/apache/dubbo-admin/pkg/core/store"
 )
@@ -59,7 +59,7 @@ func NewZKRuleGovernor(cfg *discoverycfg.Config, router store.Router, emitter ev
 
 func (g *RuleGovernor) CreateRule(r coremodel.Resource) error {
 	path := ruleConfigPath(r.ResourceMeta().Name)
-	content, err := yaml.Marshal(r.ResourceSpec())
+	content, err := meshresource.EncodeRule(r)
 	if err != nil {
 		return bizerror.Wrap(err, bizerror.YamlError,
 			fmt.Sprintf("failed to marshal resource spec, res: %s", r.String()))
@@ -89,7 +89,7 @@ func (g *RuleGovernor) CreateRule(r coremodel.Resource) error {
 
 func (g *RuleGovernor) UpdateRule(r coremodel.Resource) error {
 	path := ruleConfigPath(r.ResourceMeta().Name)
-	content, err := yaml.Marshal(r.ResourceSpec())
+	content, err := meshresource.EncodeRule(r)
 	if err != nil {
 		return bizerror.Wrap(err, bizerror.YamlError,
 			fmt.Sprintf("failed to marshal resource spec, res: %s", r.String()))
