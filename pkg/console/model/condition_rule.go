@@ -244,8 +244,21 @@ func GenConditionRuleToResp(data *meshproto.ConditionRoute) *CommonResp {
 	if data == nil {
 		return NewSuccessResp(nil)
 	}
-	return NewSuccessResp(ConditionRuleResp{
-		Conditions:    data.Conditions,
+	conditions := any(data.Conditions)
+	if data.ConfigVersion == constants.ConfiguratorVersionV3x1 {
+		conditions = data.ConditionRules
+	}
+	return NewSuccessResp(struct {
+		Conditions    any    `json:"conditions"`
+		ConfigVersion string `json:"configVersion"`
+		Enabled       bool   `json:"enabled"`
+		Force         bool   `json:"force"`
+		Key           string `json:"key"`
+		Priority      int32  `json:"priority"`
+		Runtime       bool   `json:"runtime"`
+		Scope         string `json:"scope"`
+	}{
+		Conditions:    conditions,
 		ConfigVersion: data.ConfigVersion,
 		Enabled:       data.Enabled,
 		Force:         data.Force,
