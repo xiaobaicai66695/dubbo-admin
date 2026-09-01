@@ -15,29 +15,33 @@
  * limitations under the License.
  */
 
-package governor
+package model
 
 import (
-	set "github.com/duke-git/lancet/v2/datastructure/set"
+	"encoding/json"
+	"testing"
 
-	meshresource "github.com/apache/dubbo-admin/pkg/core/resource/apis/mesh/v1alpha1"
-	"github.com/apache/dubbo-admin/pkg/core/resource/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	meshproto "github.com/apache/dubbo-admin/api/mesh/v1alpha1"
 )
 
-var RuleResourceKinds = set.New(
-	meshresource.DynamicConfigKind,
-	meshresource.ConditionRouteKind,
-	meshresource.TagRouteKind,
-	meshresource.AffinityRouteKind,
-	meshresource.ScriptRouteKind,
-)
+func TestAffinityRuleInputUsesPublicAffinityAwareField(t *testing.T) {
+	input := &AffinityRuleInput{
+		ConfigVersion: "v3.1",
+		Scope:         "application",
+		Key:           "demo",
+		Runtime:       true,
+		Enabled:       true,
+		AffinityAware: &meshproto.AffinityAware{Key: "region", Ratio: 80},
+	}
 
-// RuleGovernor makes the rule operations effective
-type RuleGovernor interface {
-	// CreateRule creates a resource in the registry
-	CreateRule(model.Resource) error
-	// UpdateRule updates a resource in the registry
-	UpdateRule(model.Resource) error
-	// DeleteRule deletes a resource from the registry
-	DeleteRule(model.Resource) error
+	spec := input.ToProto()
+	assert.Equal(t, input.AffinityAware, spec.Affinity)
+
+	raw, err := json.Marshal(GenAffinityRuleResp(spec))
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "affinityAware")
+	assert.NotContains(t, string(raw), `"affinity"`)
 }
