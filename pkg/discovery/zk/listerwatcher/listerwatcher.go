@@ -44,6 +44,7 @@ type ListerWatcher[T coremodel.Resource] struct {
 	rk                   coremodel.ResourceKind
 	conn                 *zk.Conn
 	cfg                  *discoverycfg.Config
+	zkAddress            string
 	toUpsertResourceFunc ToUpsertResourceFunc
 	toDeleteResourceFunc ToDeleteResourceFunc
 	newResourceFunc      coremodel.NewResourceFunc
@@ -59,6 +60,31 @@ func NewListerWatcher(
 	toDeleteResourceFunc ToDeleteResourceFunc,
 	basePath string,
 	cfg *discoverycfg.Config) (*ListerWatcher[coremodel.Resource], error) {
+	return newListerWatcherWithAddress(rk, toResourceFunc, toDeleteResourceFunc, basePath, cfg, cfg.Address.Registry)
+}
+
+// NewListerWatcherWithAddress keeps config-center watchers on the config-center
+// address while preserving registry defaults for service and metadata watchers.
+func NewListerWatcherWithAddress(
+	rk coremodel.ResourceKind,
+	toResourceFunc ToUpsertResourceFunc,
+	toDeleteResourceFunc ToDeleteResourceFunc,
+	basePath string,
+	cfg *discoverycfg.Config,
+	zkAddress string) (*ListerWatcher[coremodel.Resource], error) {
+	return newListerWatcherWithAddress(rk, toResourceFunc, toDeleteResourceFunc, basePath, cfg, zkAddress)
+}
+
+func newListerWatcherWithAddress(
+	rk coremodel.ResourceKind,
+	toResourceFunc ToUpsertResourceFunc,
+	toDeleteResourceFunc ToDeleteResourceFunc,
+	basePath string,
+	cfg *discoverycfg.Config,
+	zkAddress string) (*ListerWatcher[coremodel.Resource], error) {
+	if zkAddress == "" {
+		zkAddress = cfg.Address.Registry
+	}
 	newResourceFunc, err := coremodel.ResourceSchemaRegistry().NewResourceFunc(rk)
 	if err != nil {
 		return nil, err
@@ -67,7 +93,7 @@ func NewListerWatcher(
 	if err != nil {
 		return nil, err
 	}
-	conn, err := clients.NewZKConnection(cfg.Address.Registry)
+	conn, err := clients.NewZKConnection(zkAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +104,7 @@ func NewListerWatcher(
 		basePath:             basePath,
 		conn:                 conn,
 		cfg:                  cfg,
+		zkAddress:            zkAddress,
 		newResourceFunc:      newResourceFunc,
 		newResListFunc:       newResListFunc,
 		resultChan:           make(chan watch.Event, 1000),
@@ -198,7 +225,7 @@ func (lw *ListerWatcher[T]) handleEvent(event zkwatcher.ZookeeperEvent) {
 }
 
 func (lw *ListerWatcher[T]) zkAddr() string {
-	return lw.cfg.Address.Registry
+	return lw.zkAddress
 }
 
 func (lw *ListerWatcher[T]) mesh() string {
