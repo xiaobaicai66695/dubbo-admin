@@ -69,6 +69,15 @@ type affinityAwareYAML struct {
 	Ratio int32  `json:"ratio"`
 }
 
+type scriptRouteYAML struct {
+	ConfigVersion string `json:"configVersion"`
+	Scope         string `json:"scope"`
+	Key           string `json:"key"`
+	Enabled       bool   `json:"enabled"`
+	Type          string `json:"type"`
+	Script        string `json:"script"`
+}
+
 type tagRouteYAML struct {
 	Priority      int32            `json:"priority,omitempty"`
 	Enabled       bool             `json:"enabled"`
@@ -127,6 +136,15 @@ func EncodeRule(r coremodel.Resource) ([]byte, error) {
 			Enabled:       typed.Spec.Enabled,
 			AffinityAware: affinity,
 		}
+	case *ScriptRouteResource:
+		value = scriptRouteYAML{
+			ConfigVersion: typed.Spec.ConfigVersion,
+			Scope:         typed.Spec.Scope,
+			Key:           typed.Spec.Key,
+			Enabled:       typed.Spec.Enabled,
+			Type:          typed.Spec.Type,
+			Script:        typed.Spec.Script,
+		}
 	case *TagRouteResource:
 		value = tagRouteYAML{
 			Priority:      typed.Spec.Priority,
@@ -162,6 +180,8 @@ func DecodeRule(kind coremodel.ResourceKind, mesh, name, data string) (coremodel
 		r = NewDynamicConfigResourceWithAttributes(name, mesh)
 	case TagRouteKind:
 		r = NewTagRouteResourceWithAttributes(name, mesh)
+	case ScriptRouteKind:
+		r = NewScriptRouteResourceWithAttributes(name, mesh)
 	case AffinityRouteKind:
 		external := &affinityRouteYAML{}
 		if err := yaml.Unmarshal([]byte(data), external); err != nil {
@@ -290,6 +310,17 @@ func ValidateRule(r coremodel.Resource) error {
 		if typed.Spec.Affinity == nil || strings.TrimSpace(typed.Spec.Affinity.Key) == "" || typed.Spec.Affinity.Ratio < 0 || typed.Spec.Affinity.Ratio > 100 {
 			return invalidRule("affinityAware.key is required and ratio must be in [0, 100]")
 		}
+	case *ScriptRouteResource:
+		scope, key, version, suffix = typed.Spec.Scope, typed.Spec.Key, typed.Spec.ConfigVersion, constants.ScriptRuleDotSuffix
+		if scope != constants.ScopeApplication {
+			return invalidRule("script rules only support application scope")
+		}
+		if typed.Spec.Type != constants.ScriptTypeJavaScript {
+			return invalidRule("script type must be javascript")
+		}
+		if strings.TrimSpace(typed.Spec.Script) == "" || len(typed.Spec.Script) > constants.MaxScriptRuleSize {
+			return invalidRule(fmt.Sprintf("script must be non-empty and no larger than %d bytes", constants.MaxScriptRuleSize))
+		}
 	default:
 		return invalidRule(fmt.Sprintf("unsupported rule kind %s", r.ResourceKind()))
 	}
@@ -331,6 +362,8 @@ func toRuleResource(kind coremodel.ResourceKind, mesh, name, data string) coremo
 			return NewConditionRouteResourceWithAttributes(name, mesh)
 		case AffinityRouteKind:
 			return NewAffinityRouteResourceWithAttributes(name, mesh)
+		case ScriptRouteKind:
+			return NewScriptRouteResourceWithAttributes(name, mesh)
 		}
 	}
 	r, err := DecodeRule(kind, mesh, name, data)
@@ -343,4 +376,9 @@ func toRuleResource(kind coremodel.ResourceKind, mesh, name, data string) coremo
 // ToAffinityRouteResource converts config-center payloads into affinity resources.
 func ToAffinityRouteResource(mesh, name, data string) coremodel.Resource {
 	return toRuleResource(AffinityRouteKind, mesh, name, data)
+}
+
+// ToScriptRouteResource converts config-center payloads into script resources.
+func ToScriptRouteResource(mesh, name, data string) coremodel.Resource {
+	return toRuleResource(ScriptRouteKind, mesh, name, data)
 }

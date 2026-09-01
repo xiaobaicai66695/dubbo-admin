@@ -74,6 +74,22 @@ func TestAffinityRuleCodecUsesAffinityAware(t *testing.T) {
 	assert.Equal(t, res.Spec, decoded.(*AffinityRouteResource).Spec)
 }
 
+func TestScriptRuleValidation(t *testing.T) {
+	res := NewScriptRouteResourceWithAttributes("demo.script-router", "default")
+	res.Spec = &meshproto.ScriptRoute{
+		ConfigVersion: "v3.0", Scope: "application", Key: "demo", Enabled: true,
+		Type: "javascript", Script: "return invokers;",
+	}
+	raw, err := EncodeRule(res)
+	require.NoError(t, err)
+	decoded, err := DecodeRule(ScriptRouteKind, "default", res.Name, string(raw))
+	require.NoError(t, err)
+	assert.Equal(t, res.Spec, decoded.(*ScriptRouteResource).Spec)
+
+	res.Spec.Type = "lua"
+	assert.Error(t, ValidateRule(res))
+}
+
 func TestValidateRuleRejectsInvalidRouterContracts(t *testing.T) {
 	tests := []struct {
 		name string
@@ -112,6 +128,20 @@ func TestValidateRuleRejectsInvalidRouterContracts(t *testing.T) {
 				}},
 			}),
 		},
+		{
+			name: "script service scope",
+			res: scriptRouteForTest("org.demo.Service:1.0.0:demo.script-router", &meshproto.ScriptRoute{
+				ConfigVersion: "v3.0", Scope: "service", Key: "org.demo.Service:1.0.0:demo",
+				Enabled: true, Type: "javascript", Script: "return invokers;",
+			}),
+		},
+		{
+			name: "script empty body",
+			res: scriptRouteForTest("demo.script-router", &meshproto.ScriptRoute{
+				ConfigVersion: "v3.0", Scope: "application", Key: "demo", Enabled: true,
+				Type: "javascript", Script: " ",
+			}),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,8 +151,8 @@ func TestValidateRuleRejectsInvalidRouterContracts(t *testing.T) {
 }
 
 func TestRuleCodecPreservesExplicitDisabledState(t *testing.T) {
-	res := NewTagRouteResourceWithAttributes("demo.tag-router", "default")
-	res.Spec = &meshproto.TagRoute{ConfigVersion: "v3.0", Key: "demo", Enabled: false}
+	res := NewScriptRouteResourceWithAttributes("demo.script-router", "default")
+	res.Spec = &meshproto.ScriptRoute{ConfigVersion: "v3.0", Scope: "application", Key: "demo", Enabled: false, Type: "javascript", Script: "return invokers;"}
 	raw, err := EncodeRule(res)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "enabled: false")
@@ -137,6 +167,7 @@ func TestRuleConvertersCreateDeleteTombstonesFromEmptyContent(t *testing.T) {
 		{ConditionRouteKind, ToConditionRouteResource},
 		{TagRouteKind, ToTagRouteResource},
 		{AffinityRouteKind, ToAffinityRouteResource},
+		{ScriptRouteKind, ToScriptRouteResource},
 	}
 	for _, tt := range tests {
 		r := tt.fn("default", "demo", "")
@@ -173,6 +204,12 @@ func conditionRouteForTest(name string, spec *meshproto.ConditionRoute) *Conditi
 
 func affinityRouteForTest(name string, spec *meshproto.AffinityRoute) *AffinityRouteResource {
 	r := NewAffinityRouteResourceWithAttributes(name, "default")
+	r.Spec = spec
+	return r
+}
+
+func scriptRouteForTest(name string, spec *meshproto.ScriptRoute) *ScriptRouteResource {
+	r := NewScriptRouteResourceWithAttributes(name, "default")
 	r.Spec = spec
 	return r
 }
