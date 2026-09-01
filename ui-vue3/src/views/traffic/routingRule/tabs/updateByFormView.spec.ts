@@ -103,10 +103,15 @@ describe('condition route form compatibility', () => {
         priority: 12,
         enabled: true,
         force: true,
-        key: 'demo-service',
+        key: 'org.apache.demo.DemoService:1.0.0:demo',
         scope: 'service',
         runtime: false,
-        conditions: ['host=1.1.1.1 => host=2.2.2.2']
+        conditions: [
+          {
+            from: { match: 'method=SayHello' },
+            to: [{ match: 'region=hangzhou', weight: 100 }]
+          }
+        ]
       }
     }
 
@@ -153,8 +158,24 @@ describe('condition route form compatibility', () => {
     })
     await flushPromises()
 
-    const submitButton = wrapper.findAll('button')[1]
-    await submitButton.trigger('click')
+    expect(tabState.conditionRule).toEqual(
+      expect.objectContaining({
+        configVersion: 'v3.1',
+        priority: 12,
+        force: true,
+        runtime: false,
+        conditions: [
+          {
+            from: { match: 'method=SayHello' },
+            to: [{ match: 'region=hangzhou', weight: 100 }]
+          }
+        ]
+      })
+    )
+
+    const submitButton = wrapper.findAll('button').find((button) => button.text().includes('确认'))
+    expect(submitButton).toBeDefined()
+    await submitButton!.trigger('click')
     await flushPromises()
 
     expect(mocks.updateConditionRuleAPI).toHaveBeenCalledWith(
@@ -164,8 +185,81 @@ describe('condition route form compatibility', () => {
         priority: 12,
         force: true,
         runtime: false,
-        conditions: ['host=1.1.1.1 => host=2.2.2.2']
+        conditions: [
+          {
+            from: { match: 'method=SayHello' },
+            to: [{ match: 'region=hangzhou', weight: 100 }]
+          }
+        ]
       })
     )
+  })
+
+  it('reloads details instead of publishing an incomplete shared draft', async () => {
+    const rule = {
+      configVersion: 'v3.1',
+      priority: 5,
+      enabled: true,
+      force: false,
+      key: 'demo-service',
+      scope: 'service',
+      runtime: true,
+      conditions: [{ from: { match: 'method=SayHello' }, to: [] }]
+    }
+    mocks.getConditionRuleDetailAPI.mockResolvedValue({ code: HTTP_STATUS.SUCCESS, data: rule })
+    const tabState = {
+      conditionRule: {
+        enabled: true,
+        key: 'demo-service',
+        runtime: true,
+        scope: 'service'
+      }
+    }
+
+    mount(UpdateByFormView, {
+      global: {
+        plugins: [i18n],
+        provide: {
+          [PROVIDE_INJECT_KEY.TAB_LAYOUT_STATE]: tabState
+        },
+        stubs: {
+          RoutingRuleList: passthrough,
+          AFlex: passthrough,
+          'a-flex': passthrough,
+          ACol: passthrough,
+          'a-col': passthrough,
+          ACard: passthrough,
+          'a-card': passthrough,
+          ASpace: passthrough,
+          'a-space': passthrough,
+          ARow: passthrough,
+          'a-row': passthrough,
+          AForm: passthrough,
+          'a-form': passthrough,
+          AFormItem: passthrough,
+          'a-form-item': passthrough,
+          ADescriptions: passthrough,
+          'a-descriptions': passthrough,
+          ADescriptionsItem: passthrough,
+          'a-descriptions-item': passthrough,
+          ASelect: passthrough,
+          'a-select': passthrough,
+          AInput: passthrough,
+          'a-input': passthrough,
+          ASwitch: passthrough,
+          'a-switch': passthrough,
+          AInputNumber: passthrough,
+          'a-input-number': passthrough,
+          AButton: buttonStub,
+          'a-button': buttonStub,
+          DoubleLeftOutlined: passthrough,
+          DoubleRightOutlined: passthrough
+        }
+      }
+    })
+    await flushPromises()
+
+    expect(mocks.getConditionRuleDetailAPI).toHaveBeenCalledWith('demo-rule')
+    expect(tabState.conditionRule).toEqual(rule)
   })
 })
