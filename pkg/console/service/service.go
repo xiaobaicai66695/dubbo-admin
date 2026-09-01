@@ -705,6 +705,8 @@ func isServiceSameRegion(condition string) bool {
 	return strings.Contains(c, "=>region=$region")
 }
 
+// GetServiceArgumentRouteConfig reads method/argument conditions from the
+// service-level condition rule while leaving non-argument conditions untouched.
 func GetServiceArgumentRouteConfig(ctx consolectx.Context, req model.BaseServiceReq) (*model.ServiceArgumentRoute, error) {
 	serviceConditionRuleName := req.ServiceKey() + constants.ConditionRuleDotSuffix
 	rawRes, err := GetConditionRule(ctx, serviceConditionRuleName, req.Mesh)
@@ -723,6 +725,8 @@ func GetServiceArgumentRouteConfig(ctx consolectx.Context, req model.BaseService
 	}, nil
 }
 
+// UpInsertServiceArgumentRouteConfig rewrites only argument-route expressions
+// inside the service condition rule and preserves other condition entries.
 func UpInsertServiceArgumentRouteConfig(ctx consolectx.Context, req model.BaseServiceReq, route model.ServiceArgumentRoute) error {
 	serviceConditionRuleName := req.ServiceKey() + constants.ConditionRuleDotSuffix
 	conditionRouteRes, err := GetConditionRule(ctx, serviceConditionRuleName, req.Mesh)
@@ -730,9 +734,12 @@ func UpInsertServiceArgumentRouteConfig(ctx consolectx.Context, req model.BaseSe
 		logger.Errorf("get service condition rule %s failed, cause: %v", serviceConditionRuleName, err)
 		return err
 	}
+	shouldCreate := conditionRouteRes == nil
 	if conditionRouteRes == nil {
 		conditionRouteRes = meshresource.NewConditionRouteResourceWithAttributes(serviceConditionRuleName, req.Mesh)
 		conditionRouteRes.Spec.Conditions = make([]string, 0)
+	} else if conditionRouteRes.Spec == nil {
+		conditionRouteRes.Spec = &meshproto.ConditionRoute{Conditions: make([]string, 0)}
 	}
 	conditions := slice.Filter(conditionRouteRes.Spec.Conditions, func(index int, condition string) bool {
 		return !isArgumentRoute(condition)
@@ -747,12 +754,17 @@ func UpInsertServiceArgumentRouteConfig(ctx consolectx.Context, req model.BaseSe
 		Enabled:       true,
 		Force:         false,
 		Runtime:       true,
-		Key:           req.ServiceName,
+		Key:           req.ServiceKey(),
 		Scope:         constants.ScopeService,
 		Conditions:    conditions,
 	}
-	if err = UpdateConditionRule(ctx, conditionRouteRes); err != nil {
-		logger.Errorf("create service condition rule %s failed, cause: %v", serviceConditionRuleName, err)
+	if shouldCreate {
+		err = CreateConditionRule(ctx, conditionRouteRes)
+	} else {
+		err = UpdateConditionRule(ctx, conditionRouteRes)
+	}
+	if err != nil {
+		logger.Errorf("upsert service condition rule %s failed, cause: %v", serviceConditionRuleName, err)
 		return err
 	}
 	return nil
