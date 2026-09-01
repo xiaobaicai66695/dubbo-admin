@@ -67,12 +67,13 @@ func (f *Factory) NewListWatchers(config *discoverycfg.Config) ([]controller.Res
 	if err != nil {
 		return nil, err
 	}
-	configLW, err := listerwatcher.NewListerWatcher(
+	configLW, err := listerwatcher.NewListerWatcherWithAddress(
 		meshresource.ZKConfigKind,
 		toUpsertZKConfigResource,
 		toDeleteZKConfigResource,
 		"/dubbo/config",
 		config,
+		config.Address.ConfigCenter,
 	)
 	if err != nil {
 		return nil, err
@@ -116,11 +117,10 @@ func toDeleteMappingResource(mesh, nodePath string) coremodel.Resource {
 }
 
 func toUpsertZKConfigResource(mesh, nodePath, nodeData string) coremodel.Resource {
-	paths := strings.Split(nodePath, constants.PathSeparator)
-	if len(paths) != 4 {
+	configName, ok := zkConfigName(nodePath)
+	if !ok {
 		return nil
 	}
-	configName := paths[3]
 	res := meshresource.NewZKConfigResourceWithAttributes(configName, mesh)
 	res.Spec = &meshproto.ZKConfig{
 		NodeName: configName,
@@ -130,16 +130,32 @@ func toUpsertZKConfigResource(mesh, nodePath, nodeData string) coremodel.Resourc
 }
 
 func toDeleteZKConfigResource(mesh, nodePath string) coremodel.Resource {
-	paths := strings.Split(nodePath, constants.PathSeparator)
-	if len(paths) != 4 {
+	configName, ok := zkConfigName(nodePath)
+	if !ok {
 		return nil
 	}
-	configName := paths[3]
 	res := meshresource.NewZKConfigResourceWithAttributes(configName, mesh)
 	res.Spec = &meshproto.ZKConfig{
 		NodeName: configName,
 	}
 	return res
+}
+
+// zkConfigName accepts the new grouped rule path and the legacy flat path while
+// ignoring config root nodes that do not represent a rule.
+func zkConfigName(nodePath string) (string, bool) {
+	paths := strings.Split(nodePath, constants.PathSeparator)
+	switch len(paths) {
+	case 4:
+		if paths[3] != "" && paths[3] != constants.RuleConfigGroup {
+			return paths[3], true
+		}
+	case 5:
+		if paths[3] == constants.RuleConfigGroup && paths[4] != "" {
+			return paths[4], true
+		}
+	}
+	return "", false
 }
 
 func toUpsertZKMetadataResource(mesh, nodePath, nodeData string) coremodel.Resource {
