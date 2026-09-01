@@ -66,6 +66,9 @@
                           :un-checked-children="t('flowControlDomain.off')"
                         />
                       </a-form-item>
+                      <a-form-item :label="t('routingRuleDomain.configVersion')">
+                        <a-input :value="baseInfo.configVersion" disabled style="width: 120px" />
+                      </a-form-item>
                     </a-col>
                     <a-col :span="12">
                       <a-form-item :label="t('routingRuleDomain.objectOfAction')" required>
@@ -99,7 +102,12 @@
             </a-row>
 
             <a-card :title="t('routingRuleDomain.routeList')" style="width: 100%" class="_detail">
+              <StructuredConditionRuleList
+                v-if="baseInfo.configVersion === 'v3.1'"
+                v-model="structuredConditions"
+              />
               <RoutingRuleList
+                v-else
                 :routeList="routeList"
                 :baseInfo="baseInfo"
                 :routingRuleLogic="routingRuleLogic"
@@ -150,10 +158,15 @@ import { message } from 'ant-design-vue'
 import { useRoute } from 'vue-router'
 import { getConditionRuleDetailAPI, updateConditionRuleAPI } from '@/api/service/traffic'
 import { PROVIDE_INJECT_KEY } from '@/base/enums/ProvideInject'
-import { isNil } from 'lodash'
 import { HTTP_STATUS } from '@/base/http/constants'
 import useRoutingRule from '../composables/useRoutingRule'
 import RoutingRuleList from '../components/RoutingRuleList.vue'
+import StructuredConditionRuleList from '../components/StructuredConditionRuleList.vue'
+import {
+  isCompleteConditionRule,
+  normalizeStructuredConditions,
+  type StructuredConditionRule
+} from '../model/ConditionRuleModel'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -168,64 +181,20 @@ const {
   parseConditionToStringToArray
 } = routingRuleLogic
 
-// Raw conditions as fetched. When configVersion is unsupported the form cannot
-// parse them into routeList, so we send these back untouched on save instead of
-// letting mergeConditions() overwrite the rule with an empty list.
-const originalConditions = ref<string[]>([])
-const conditionsEditable = ref(true)
+const structuredConditions = ref<StructuredConditionRule[]>([])
+const initialized = ref(false)
 
 onMounted(async () => {
-  if (!isNil(TAB_STATE.conditionRule)) {
-    const {
-      configVersion,
-      priority,
-      enabled = true,
-      force = false,
-      key,
-      scope,
-      runtime = true,
-      conditions
-    } = TAB_STATE.conditionRule
-    baseInfo.configVersion = configVersion
-    baseInfo.priority = priority
-    baseInfo.enable = enabled
-    baseInfo.faultTolerantProtection = force
-    baseInfo.objectOfAction = key
-    baseInfo.ruleGranularity = scope
-    baseInfo.runtime = runtime
-
-    // Clear and rebuild routeList based on conditions
-    if (conditions && conditions.length > 0) {
-      originalConditions.value = conditions
-      if (configVersion !== 'v3.0') {
-        conditionsEditable.value = false
-        console.warn(
-          `skip condition route form parsing for unsupported configVersion: ${configVersion}`
-        )
-      } else {
-        routeList.value = []
-        conditions.forEach((item: string, index: number) => {
-          // Add new route item for each condition
-          routeList.value.push({
-            selectedMatchConditionTypes: [],
-            requestMatch: [],
-            selectedRouteDistributeMatchTypes: [],
-            routeDistribute: []
-          })
-
-          const conditionArr = item.split(' => ')
-          const match = conditionArr[0]?.trim()
-          const to = conditionArr[1]?.trim()
-          routeList.value[index].requestMatch = parseConditionMatchStringToArray(match, index)
-          routeList.value[index].routeDistribute = parseConditionToStringToArray(to, index)
-        })
-      }
-    }
+  if (isCompleteConditionRule(TAB_STATE.conditionRule)) {
+    loadConditionRule(TAB_STATE.conditionRule)
   } else {
     await getRoutingRuleDetail()
   }
   getVersionAndGroup()
+  initialized.value = true
+  syncConditionRuleDraft()
 })
+
 const route = useRoute()
 
 const isDrawerOpened = ref(false)
@@ -245,16 +214,74 @@ const baseInfo = reactive({
   group: ''
 })
 
-watch(baseInfo, (newVal) => {
-  const { ruleGranularity, enable = true, runtime = true, objectOfAction } = newVal
-  TAB_STATE.conditionRule = {
-    ...TAB_STATE.conditionRule,
-    enabled: enable,
-    key: objectOfAction,
-    runtime: runtime,
-    scope: ruleGranularity
+const loadConditionRule = (data: Record<string, any>) => {
+  const {
+    conditions = [],
+    configVersion = 'v3.0',
+    priority,
+    enabled = true,
+    force = false,
+    key = '',
+    runtime = true,
+    scope = ''
+  } = data
+  const keyParts = String(key).split(':')
+  baseInfo.configVersion = configVersion
+  baseInfo.priority = priority
+  baseInfo.enable = enabled
+  baseInfo.faultTolerantProtection = force
+  baseInfo.objectOfAction = scope === 'service' ? keyParts[0] : key
+  baseInfo.ruleGranularity = scope
+  baseInfo.runtime = runtime
+  if (scope === 'service') {
+    baseInfo.version = keyParts[1] || ''
+    baseInfo.group = keyParts[2] || ''
   }
-})
+
+  if (configVersion === 'v3.1') {
+    structuredConditions.value = normalizeStructuredConditions(conditions)
+    return
+  }
+
+  routeList.value = []
+  conditions.forEach((item: string, index: number) => {
+    routeList.value.push({
+      selectedMatchConditionTypes: [],
+      requestMatch: [],
+      selectedRouteDistributeMatchTypes: [],
+      routeDistribute: []
+    })
+    const [match, to] = item.split(' => ')
+    routeList.value[index].requestMatch = parseConditionMatchStringToArray(match?.trim(), index)
+    routeList.value[index].routeDistribute = parseConditionToStringToArray(to?.trim(), index)
+  })
+}
+
+const currentConditions = () =>
+  baseInfo.configVersion === 'v3.1' ? structuredConditions.value : mergeConditions()
+
+const currentRuleKey = () =>
+  baseInfo.ruleGranularity === 'service' && baseInfo.version && baseInfo.group
+    ? `${baseInfo.objectOfAction}:${baseInfo.version}:${baseInfo.group}`
+    : baseInfo.objectOfAction
+
+const syncConditionRuleDraft = () => {
+  if (!initialized.value) {
+    return
+  }
+  TAB_STATE.conditionRule = {
+    configVersion: baseInfo.configVersion || 'v3.0',
+    priority: baseInfo.priority,
+    enabled: baseInfo.enable,
+    force: baseInfo.faultTolerantProtection,
+    key: currentRuleKey(),
+    runtime: baseInfo.runtime,
+    scope: baseInfo.ruleGranularity,
+    conditions: currentConditions()
+  }
+}
+
+watch(baseInfo, syncConditionRuleDraft)
 
 // rule granularity options
 // rule granularity options
@@ -270,63 +297,16 @@ const ruleGranularityOptions = computed(() => [
   }
 ])
 
-watch(
-  routeList,
-  () => {
-    TAB_STATE.conditionRule = {
-      ...TAB_STATE.conditionRule,
-      conditions: mergeConditions()
-    }
-  },
-  {
-    deep: true
-  }
-)
+watch(routeList, syncConditionRuleDraft, {
+  deep: true
+})
+watch(structuredConditions, syncConditionRuleDraft, { deep: true })
 
 // Get condition routing details
 async function getRoutingRuleDetail() {
   let res = await getConditionRuleDetailAPI(route.params?.ruleName as string)
   if (res?.code === HTTP_STATUS.SUCCESS) {
-    const { conditions, configVersion, priority, enabled, force, key, runtime, scope } =
-      res.data || {}
-    baseInfo.ruleGranularity = scope
-    baseInfo.objectOfAction = key
-    baseInfo.enable = enabled
-    baseInfo.faultTolerantProtection = force
-    baseInfo.runtime = runtime
-    baseInfo.configVersion = configVersion
-    baseInfo.priority = priority
-
-    //   format conditions data
-    if (conditions && conditions.length > 0) {
-      originalConditions.value = conditions
-      if (configVersion !== 'v3.0') {
-        conditionsEditable.value = false
-        console.warn(
-          `skip condition route form parsing for unsupported configVersion: ${configVersion}`
-        )
-        return
-      }
-      conditionsEditable.value = true
-      // Clear and rebuild routeList based on conditions
-      routeList.value = []
-      conditions.forEach((item: string, index: number) => {
-        // Add new route item for each condition
-        routeList.value.push({
-          selectedMatchConditionTypes: [],
-          requestMatch: [],
-          selectedRouteDistributeMatchTypes: [],
-          routeDistribute: []
-        })
-
-        const conditionArr = item.split(' => ')
-        const match = conditionArr[0]?.trim()
-        const to = conditionArr[1]?.trim()
-        // console.log('to', to)
-        routeList.value[index].requestMatch = parseConditionMatchStringToArray(match, index)
-        routeList.value[index].routeDistribute = parseConditionToStringToArray(to, index)
-      })
-    }
+    loadConditionRule(res.data || {})
   }
 }
 
@@ -334,24 +314,17 @@ const updateRoutingRule = async () => {
   loading.value = true
   try {
     const { ruleName } = route.params
-    const {
-      ruleGranularity,
-      objectOfAction,
-      enable,
-      faultTolerantProtection,
-      runtime,
-      priority,
-      configVersion
-    } = baseInfo
+    const { ruleGranularity, enable, faultTolerantProtection, runtime, priority, configVersion } =
+      baseInfo
     const data = {
       configVersion: configVersion || 'v3.0',
       priority,
       scope: ruleGranularity,
-      key: objectOfAction,
+      key: currentRuleKey(),
       enabled: enable,
       force: faultTolerantProtection,
       runtime,
-      conditions: conditionsEditable.value ? mergeConditions() : originalConditions.value
+      conditions: currentConditions()
     }
     const res = await updateConditionRuleAPI(ruleName as string, data)
     if (res?.code === HTTP_STATUS.SUCCESS) {
