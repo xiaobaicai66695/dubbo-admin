@@ -91,16 +91,36 @@ go test -tags=e2e ./e2e/router-rule-chain -count=1 -v
 必须使用 `-count=1`，避免 Go test cache 遮蔽失败或跳过的执行。成功时输出末尾应为：
 
 ```text
---- PASS: TestAdminRulesReachDubboGoRouterChain
+--- PASS: TestAffinityRouterRuleCreate
+--- PASS: TestAffinityRouterRuleUpdate
+--- PASS: TestAffinityRouterRuleDelete
+--- PASS: TestScriptRouterRuleCreate
+--- PASS: TestScriptRouterRuleUpdate
+--- PASS: TestScriptRouterRuleDelete
 PASS
 ```
 
 不能只凭 exit code 为零就判定通过。未设置 `DUBBO_ADMIN_E2E_ZK_ADDR` 时，测试
 会有意输出 `SKIP` 并以零退出，因为此时无法证明外部配置链路真正生效。
 
+六个生命周期是彼此独立的测试函数。若只需定位一个步骤，可以使用 `-run`：
+
+| 验证目标 | 测试名 | 示例命令 |
+| --- | --- | --- |
+| Affinity 创建 | `TestAffinityRouterRuleCreate` | `go test -tags=e2e ./e2e/router-rule-chain -run '^TestAffinityRouterRuleCreate$' -count=1 -v` |
+| Affinity 更新 | `TestAffinityRouterRuleUpdate` | `go test -tags=e2e ./e2e/router-rule-chain -run '^TestAffinityRouterRuleUpdate$' -count=1 -v` |
+| Affinity 删除 | `TestAffinityRouterRuleDelete` | `go test -tags=e2e ./e2e/router-rule-chain -run '^TestAffinityRouterRuleDelete$' -count=1 -v` |
+| Script 创建 | `TestScriptRouterRuleCreate` | `go test -tags=e2e ./e2e/router-rule-chain -run '^TestScriptRouterRuleCreate$' -count=1 -v` |
+| Script 更新 | `TestScriptRouterRuleUpdate` | `go test -tags=e2e ./e2e/router-rule-chain -run '^TestScriptRouterRuleUpdate$' -count=1 -v` |
+| Script 删除 | `TestScriptRouterRuleDelete` | `go test -tags=e2e ./e2e/router-rule-chain -run '^TestScriptRouterRuleDelete$' -count=1 -v` |
+
+例如，旧版 Dubbo-Go 的 Script 删除缺陷只会使
+`TestScriptRouterRuleDelete` 失败；Affinity 测试和 Script 的创建/更新测试仍会分别
+报告自己的结果。
+
 ## 4. 判定通过的具体行为
 
-测试会为每个配置事件和路由结果最多等待十秒。测试通过时，已经验证了下列行为：
+每个测试会为配置事件和路由结果最多等待十秒。测试通过时，已经验证了下列行为：
 
 ### Affinity Router
 
