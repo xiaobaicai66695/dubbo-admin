@@ -1,73 +1,66 @@
-# Manual E2E verification: Affinity and Script Router
+# Affinity 与 Script Router 手动 E2E 验证
 
-This guide runs the opt-in integration test for the two router rules. It is
-intended for a developer who wants to verify the real configuration propagation
-path locally before submitting or reviewing a change.
+本指南用于运行 Affinity Router 与 Script Router 的可选端到端测试。它面向
+需要在提交或评审变更前，在本地确认真实配置传播链路的开发者。
 
 ```text
 Dubbo Admin ZK governor
   -> /dubbo/config/dubbo/<ruleName>
-  -> Dubbo-Go dynamic-configuration listener
+  -> Dubbo-Go 动态配置监听器
   -> RouterChain
 ```
 
-The test does not mock the configuration listener or the `RouterChain`. It
-creates a real ZooKeeper-backed rule and checks that the already-created
-Dubbo-Go consumer chain changes its selected invokers after create, update, and
-delete operations.
+测试不会 mock 配置监听器或 `RouterChain`。它会通过真实 ZooKeeper 写入规则，
+再验证已经创建好的 Dubbo-Go consumer RouterChain 会在规则创建、更新、删除后
+改变其选中的 invoker。
 
-## What this test proves
+## 本测试验证的内容
 
-| Rule | Create | Update | Delete |
+| 路由 | 创建 | 更新 | 删除 |
 | --- | --- | --- | --- |
-| Affinity | Publishes `<application>.affinity-router` using public `affinityAware` YAML; a `region=beijing` consumer selects only the Beijing provider. | Changes `ratio` from `50` to `60`, which makes the chain fall back to both providers. | The listener receives `Del` and the chain remains restored to both providers. |
-| Script | Publishes `<application>.script-router` with `type: javascript`; the script selects one provider. | Replaces the script so that it selects the other provider. | The listener receives `Del` and the chain restores both providers. |
+| Affinity | 发布 `<application>.affinity-router`，YAML 使用公开字段 `affinityAware`；`region=beijing` 的 consumer 只选择北京 provider。 | 将 `ratio` 从 `50` 改为 `60`，RouterChain 回退为两个 provider。 | 监听器收到 `Del`，RouterChain 保持恢复后的两个 provider。 |
+| Script | 发布 `<application>.script-router`，YAML 包含 `type: javascript`；脚本选择其中一个 provider。 | 用新脚本替换旧脚本，使其选择另一个 provider。 | 监听器收到 `Del`，RouterChain 恢复为两个 provider。 |
 
-The generated application name is unique for each run. The test uses two
-in-memory provider invokers: the Beijing provider is on port `20880`, and the
-Shanghai provider is on port `20881`.
+每次执行都会生成唯一 application 名称。测试使用两个内存 provider invoker：
+北京 provider 端口为 `20880`，上海 provider 端口为 `20881`。
 
-## Scope and prerequisites
+## 范围与前置条件
 
-This is a runtime propagation E2E test. It verifies the Admin governor, the
-ZooKeeper data path, the Dubbo-Go listener, and router behavior. It does not
-start the Admin HTTP server or Vue application, execute a real RPC over the
-network, or run against a real Nacos server.
+这是一个运行时配置传播 E2E。它验证 Admin governor、ZooKeeper 数据路径、
+Dubbo-Go 监听器和 RouterChain 行为；不启动 Admin HTTP 服务或 Vue 页面，
+不发起真实网络 RPC，也不执行真实 Nacos E2E。
 
-You need:
+需要满足以下条件：
 
-1. The branch containing the E2E test (for example,
-   `feat/affinity-script-router-integration` during integration validation).
-2. Go `1.24.0`, matching [`go.mod`](../../go.mod).
-3. Docker, or another reachable ZooKeeper server.
-4. A Dubbo-Go runtime that includes the Script Router delete fix. The upstream
-   fix begins at
-   [`fd4dea4f8`](https://github.com/apache/dubbo-go/commit/fd4dea4f8ccef79a3190ba1d4a60af775d615135).
-   For the currently pinned Admin dependency, a local checkout with the
-   backport can be used instead:
-   `D:\environment\github\dubbo-go\dubbo-go-script-delete-fix`.
+1. 使用包含 E2E 测试的分支（集成验证阶段例如
+   `feat/affinity-script-router-integration`）。
+2. Go `1.24.0`，与 [`go.mod`](../../go.mod) 一致。
+3. Docker，或其他可访问的 ZooKeeper 服务。
+4. 使用包含 Script Router 删除修复的 Dubbo-Go runtime。上游修复从
+   [`fd4dea4f8`](https://github.com/apache/dubbo-go/commit/fd4dea4f8ccef79a3190ba1d4a60af775d615135)
+   开始。对于当前 Admin 锁定的依赖版本，可以改用本地含回补修复的 checkout：
+   `D:\environment\github\dubbo-go\dubbo-go-script-delete-fix`。
 
-The delete prerequisite is important: an older Script Router tries to parse
-the empty delete payload, reports `EOF`, and leaves the old script active.
+第 4 项很重要：旧版 Script Router 会在删除时尝试解析空 payload，报出 `EOF`，
+并保留旧脚本路由。
 
-## 1. Start ZooKeeper
+## 1. 启动 ZooKeeper
 
-Open PowerShell terminal A and start an isolated local ZooKeeper instance:
+在 PowerShell 终端 A 中启动一个隔离的本地 ZooKeeper：
 
 ```powershell
 docker run --rm --name dubbo-admin-e2e-zk -d -p 2181:2181 zookeeper:3.9
 Test-NetConnection 127.0.0.1 -Port 2181
 ```
 
-Continue only when the `TcpTestSucceeded` result is `True`. If you already
-have ZooKeeper, skip Docker and use its address in the test command below.
+只有在 `TcpTestSucceeded` 为 `True` 后才继续。若已有可用 ZooKeeper，
+可跳过 Docker，并在后续命令中使用其地址。
 
-## 2. Select a compatible Dubbo-Go checkout without changing `go.mod`
+## 2. 不修改 `go.mod`，选择兼容的 Dubbo-Go checkout
 
-Do not add a `replace` directive to this repository's `go.mod`. Instead,
-create a Go workspace outside the Admin repository. The following example
-assumes the Admin repository and the compatible Dubbo-Go checkout are siblings
-under `D:\environment\github\dubbo-go`.
+不要在本仓库的 `go.mod` 中加入本地 `replace`。应在 Admin 仓库外创建 Go
+workspace。下面示例假设 Admin 仓库和包含回补修复的 Dubbo-Go checkout 同处于
+`D:\environment\github\dubbo-go` 目录下。
 
 ```powershell
 $routerE2EWorkspace = 'D:\environment\github\dubbo-go\.router-e2e-workspace'
@@ -81,14 +74,13 @@ $env:GOWORK = Join-Path (Get-Location) 'go.work'
 Pop-Location
 ```
 
-If you use a released Dubbo-Go version that already contains the upstream fix,
-point the workspace at that module instead. The test imports Affinity and
-registers the Script Router factory itself, so no additional imports are needed
-for the test process.
+如果使用的 Dubbo-Go release 已包含上述上游修复，请将 workspace 指向该模块。
+测试本身已经 import Affinity，并注册 Script Router factory，因此测试进程不需要
+额外 import。
 
-## 3. Run the E2E test
+## 3. 执行 E2E 测试
 
-In PowerShell terminal B:
+在 PowerShell 终端 B 中运行：
 
 ```powershell
 Set-Location D:\environment\github\dubbo-go\dubbo-admin
@@ -96,62 +88,55 @@ $env:DUBBO_ADMIN_E2E_ZK_ADDR = 'zookeeper://127.0.0.1:2181'
 go test -tags=e2e ./e2e/router-rule-chain -count=1 -v
 ```
 
-`-count=1` is required so that Go's test cache cannot hide a failed or skipped
-run. A successful result ends with:
+必须使用 `-count=1`，避免 Go test cache 遮蔽失败或跳过的执行。成功时输出末尾应为：
 
 ```text
 --- PASS: TestAdminRulesReachDubboGoRouterChain
 PASS
 ```
 
-Do not treat an exit code of zero by itself as success. Without
-`DUBBO_ADMIN_E2E_ZK_ADDR`, the test deliberately reports `SKIP` and exits zero
-because it cannot prove the external configuration path.
+不能只凭 exit code 为零就判定通过。未设置 `DUBBO_ADMIN_E2E_ZK_ADDR` 时，测试
+会有意输出 `SKIP` 并以零退出，因为此时无法证明外部配置链路真正生效。
 
-## 4. Read the expected behavior
+## 4. 判定通过的具体行为
 
-The test waits up to ten seconds for each configuration event and routing
-result. On success, it has verified all of the following:
+测试会为每个配置事件和路由结果最多等待十秒。测试通过时，已经验证了下列行为：
 
 ### Affinity Router
 
-1. Admin writes `<application>.affinity-router` to
-   `/dubbo/config/dubbo/<ruleName>`.
-2. The stored YAML contains `affinityAware:` and does **not** leak the internal
-   protobuf field name `affinity:`.
-3. The Dubbo-Go listener receives an Add event and the chain changes from two
-   invokers to the single Beijing invoker (`20880`).
-4. Updating `ratio: 50` to `ratio: 60` produces an Update event (or Add for an
-   older compatible ZooKeeper listener) and restores both invokers.
-5. Deleting the rule produces a Delete event and leaves the chain unfiltered
-   with both invokers.
+1. Admin 将 `<application>.affinity-router` 写入
+   `/dubbo/config/dubbo/<ruleName>`。
+2. ZooKeeper 中的 YAML 包含 `affinityAware:`，且不会泄露内部 protobuf 字段名
+   `affinity:`。
+3. Dubbo-Go 监听器收到 Add 事件，RouterChain 从两个 invoker 变为只包含北京
+   invoker（`20880`）。
+4. 把 `ratio: 50` 更新为 `ratio: 60` 后，收到 Update 事件（旧但兼容的
+   ZooKeeper listener 可能报告为 Add），并恢复两个 invoker。
+5. 删除规则后收到 Delete 事件，RouterChain 保持未过滤的两个 invoker。
 
 ### Script Router
 
-1. Admin writes `<application>.script-router` to
-   `/dubbo/config/dubbo/<ruleName>` and the stored YAML contains
-   `type: javascript`.
-2. The listener receives an Add event; the initial JavaScript chooses one
-   provider.
-3. Updating the JavaScript chooses the other provider, proving that the
-   compiled router is hot-replaced rather than merely re-read.
-4. Deleting the rule produces a Delete event and restores both invokers. This
-   is the regression check for the empty-payload Script Router delete bug.
+1. Admin 将 `<application>.script-router` 写入
+   `/dubbo/config/dubbo/<ruleName>`，YAML 包含 `type: javascript`。
+2. 监听器收到 Add 事件，初始 JavaScript 脚本选择一个 provider。
+3. 更新 JavaScript 后选择另一个 provider，证明编译后的 router 被热替换，
+   而非只是重新读取配置。
+4. 删除规则后收到 Delete 事件，RouterChain 恢复两个 invoker。这是对
+   Script Router 空 payload 删除缺陷的回归验证。
 
-## Failure diagnosis
+## 故障排查
 
-| Symptom | Likely cause | Action |
+| 现象 | 可能原因 | 处理方法 |
 | --- | --- | --- |
-| Test shows `SKIP` | `DUBBO_ADMIN_E2E_ZK_ADDR` is unset. | Set it to a reachable `zookeeper://host:port` address and run again with `-count=1`. |
-| Cannot connect to ZooKeeper | Container is not ready, port `2181` is occupied, or the address is wrong. | Run `Test-NetConnection`, inspect `docker logs dubbo-admin-e2e-zk`, or choose a different reachable server. |
-| Script delete times out or reports `EOF` | The selected Dubbo-Go version lacks the delete fix. | Use a checkout/release containing `fd4dea4f8` or the compatible backport, then recreate the Go workspace. |
-| No router update within 10 seconds | The config listener cannot observe the same ZooKeeper endpoint or a router factory is not registered in a real consumer. | Verify the address, then check the consumer prerequisites in [the compatibility document](../../docs/affinity-script-router-compatibility.md#dubbo-go-consumer-prerequisites). |
-| Result still has two invokers after a create | The expected rule semantics or provider metadata differs from this fixture. | Inspect the test's consumer/provider URLs and the `ratio`/script assertions in [`router_rule_chain_e2e_test.go`](router_rule_chain_e2e_test.go). |
+| 输出 `SKIP` | 未设置 `DUBBO_ADMIN_E2E_ZK_ADDR`。 | 设置为可访问的 `zookeeper://host:port`，并使用 `-count=1` 重新执行。 |
+| 无法连接 ZooKeeper | 容器未就绪、`2181` 被占用，或地址错误。 | 执行 `Test-NetConnection`，查看 `docker logs dubbo-admin-e2e-zk`，或改用其他可访问服务。 |
+| Script 删除超时或报 `EOF` | 使用的 Dubbo-Go 不含删除修复。 | 使用包含 `fd4dea4f8` 的 checkout/release 或兼容回补，再重新创建 Go workspace。 |
+| 十秒内没有路由更新 | 监听器未连接到同一个 ZooKeeper，或真实 consumer 未注册 router factory。 | 核对地址；然后参阅[兼容说明中的 consumer 前置条件](../../docs/affinity-script-router-compatibility.md#dubbo-go-consumer-prerequisites)。 |
+| 创建规则后仍然得到两个 invoker | 当前 fixture 的规则语义或 provider metadata 与断言不符。 | 检查测试中的 consumer/provider URL，以及 [`router_rule_chain_e2e_test.go`](router_rule_chain_e2e_test.go) 中的 `ratio`/脚本断言。 |
 
-## 5. Clean up
+## 5. 清理环境
 
-After the test, remove only the environment override and stop the disposable
-ZooKeeper container:
+测试结束后，仅移除环境变量覆盖并停止临时 ZooKeeper 容器：
 
 ```powershell
 Remove-Item Env:GOWORK -ErrorAction SilentlyContinue
@@ -159,8 +144,8 @@ Remove-Item Env:DUBBO_ADMIN_E2E_ZK_ADDR -ErrorAction SilentlyContinue
 docker stop dubbo-admin-e2e-zk
 ```
 
-The test deletes the ZooKeeper rules it created. The external Go workspace is
-outside this repository and can be retained for future runs.
+测试会删除它创建的 ZooKeeper 规则。仓库外的 Go workspace 可以保留，供后续执行
+继续使用。
 
-For the complete Admin/Dubbo-Go YAML and configuration-center contract, see
-[Affinity and Script Router compatibility](../../docs/affinity-script-router-compatibility.md).
+Admin 与 Dubbo-Go 间完整的 YAML 和配置中心契约，请参阅
+[Affinity 与 Script Router 兼容说明](../../docs/affinity-script-router-compatibility.md)。
