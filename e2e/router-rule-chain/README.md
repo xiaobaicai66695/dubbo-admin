@@ -131,7 +131,7 @@ PASS
 | 输出 `SKIP` | 未设置 `DUBBO_ADMIN_E2E_ZK_ADDR`。 | 设置为可访问的 `zookeeper://host:port`，并使用 `-count=1` 重新执行。 |
 | 无法连接 ZooKeeper | 容器未就绪、`2181` 被占用，或地址错误。 | 执行 `Test-NetConnection`，查看 `docker logs dubbo-admin-e2e-zk`，或改用其他可访问服务。 |
 | Script 删除超时或报 `EOF` | 使用的 Dubbo-Go 不含删除修复。 | 使用包含 `fd4dea4f8` 的 checkout/release 或兼容回补，再重新创建 Go workspace。 |
-| 十秒内没有路由更新 | 监听器未连接到同一个 ZooKeeper，或真实 consumer 未注册 router factory。 | 核对地址；然后参阅[兼容说明中的 consumer 前置条件](../../docs/affinity-script-router-compatibility.md#dubbo-go-consumer-prerequisites)。 |
+| 十秒内没有路由更新 | 监听器未连接到同一个 ZooKeeper，或真实 consumer 未注册 router factory。 | 核对地址；然后参阅[兼容说明中的 consumer 前置条件](../../docs/zh-cn/affinity-script-router-compatibility.md#dubbo-go-consumer-前置条件)。 |
 | 创建规则后仍然得到两个 invoker | 当前 fixture 的规则语义或 provider metadata 与断言不符。 | 检查测试中的 consumer/provider URL，以及 [`router_rule_chain_e2e_test.go`](router_rule_chain_e2e_test.go) 中的 `ratio`/脚本断言。 |
 
 ## 5. 清理环境
@@ -148,4 +148,4 @@ docker stop dubbo-admin-e2e-zk
 继续使用。
 
 Admin 与 Dubbo-Go 间完整的 YAML 和配置中心契约，请参阅
-[Affinity 与 Script Router 兼容说明](../../docs/affinity-script-router-compatibility.md)。
+[Affinity 与 Script Router 兼容说明](../../docs/zh-cn/affinity-script-router-compatibility.md)。

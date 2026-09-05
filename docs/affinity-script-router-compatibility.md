@@ -1,5 +1,7 @@
 # Affinity and Script Router compatibility
 
+[简体中文](zh-cn/affinity-script-router-compatibility.md)
+
 This document describes the Admin-to-runtime contract for Affinity Router and
 Script Router. It intentionally does not change the Condition Router, Tag
 Router, or Dynamic Config contracts.
