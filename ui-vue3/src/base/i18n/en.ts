@@ -96,7 +96,7 @@ const words: I18nType = {
     saveChanges: 'Save changes',
     deleteConfirm: 'Delete {ruleName}? This removes the rule from the configuration center.',
     affinityHint:
-      'Affinity rules support application or service scope. For service scope, use interface:version:group as the key.',
+      'Affinity rules support application or service scope. For service scope, enter an interface name (completed as interface::) or the full interface:version:group key.',
     scriptHint: 'Script rules support application scope and the registered javascript type only.',
     yamlMustBeObject: 'The YAML document must be an object.',
     keyRequired: 'A rule key is required.',

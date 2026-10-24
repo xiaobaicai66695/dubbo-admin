@@ -167,8 +167,7 @@ onBeforeRouteLeave(() => {
   })
 })
 
-// save derives ruleName from key + suffix on create, matching the backend and
-// Dubbo runtime subscription contract.
+// Service affinity rules use the colon-separated service key expected by Dubbo.
 async function save() {
   if (loading.value || loadingDetail.value || loadError.value) return
   loading.value = true
@@ -177,8 +176,11 @@ async function save() {
     if (!data || typeof data !== 'object' || Array.isArray(data))
       throw new Error(t('routerRuleDomain.yamlMustBeObject'))
     const rule = data as Record<string, unknown>
-    const key = String(rule.key || '').trim()
+    let key = String(rule.key || '').trim()
     if (!key) throw new Error(t('routerRuleDomain.keyRequired'))
+    if (props.kind === 'affinity-rule' && rule.scope === 'service' && !key.includes(':')) {
+      key += '::'
+    }
     rule.key = key
     const targetName = editing.value ? ruleName.value : `${key}${suffix.value}`
     const res = editing.value

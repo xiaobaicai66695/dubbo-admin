@@ -101,7 +101,7 @@ const words: I18nType = {
     create: '新建{rule}',
     saveChanges: '保存修改',
     deleteConfirm: '确认删除 {ruleName} 吗？该规则将从配置中心移除。',
-    affinityHint: '亲和路由支持应用或服务粒度；服务粒度的 key 格式为 interface:version:group。',
+    affinityHint: '亲和路由支持应用或服务粒度；服务粒度可填接口名（默认补齐为 interface::）或完整的 interface:version:group。',
     scriptHint: '脚本路由仅支持应用粒度和已注册的 javascript 脚本类型。',
     yamlMustBeObject: 'YAML 文档必须是对象。',
     keyRequired: '必须填写规则 key。',

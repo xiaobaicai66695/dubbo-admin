@@ -163,6 +163,57 @@ describe('RouterRuleYamlEditor', () => {
     expect(mocks.push).toHaveBeenCalledWith('/traffic/affinityRule')
   })
 
+  it('completes a bare service affinity key before creating the rule', async () => {
+    mocks.addRouterRuleAPI.mockResolvedValue({ code: HTTP_STATUS.SUCCESS })
+    const wrapper = mountEditor('affinity-rule')
+    await flushPromises()
+    await wrapper.find('[data-test="yaml-editor"]').setValue(
+      yaml.dump({
+        configVersion: 'v3.1',
+        scope: 'service',
+        key: 'org.apache.dubbo.samples.CommentService',
+        enabled: true,
+        runtime: true,
+        affinityAware: { key: 'region', ratio: 1 }
+      })
+    )
+
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(mocks.addRouterRuleAPI).toHaveBeenCalledWith(
+      'affinity-rule',
+      'org.apache.dubbo.samples.CommentService::.affinity-router',
+      expect.objectContaining({
+        scope: 'service',
+        key: 'org.apache.dubbo.samples.CommentService::'
+      })
+    )
+  })
+
+  it('preserves a service affinity key with version and group', async () => {
+    mocks.addRouterRuleAPI.mockResolvedValue({ code: HTTP_STATUS.SUCCESS })
+    const wrapper = mountEditor('affinity-rule')
+    await flushPromises()
+    await wrapper.find('[data-test="yaml-editor"]').setValue(
+      yaml.dump({
+        configVersion: 'v3.1',
+        scope: 'service',
+        key: 'org.apache.dubbo.samples.CommentService:1.0:group-a',
+        affinityAware: { key: 'region', ratio: 1 }
+      })
+    )
+
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(mocks.addRouterRuleAPI).toHaveBeenCalledWith(
+      'affinity-rule',
+      'org.apache.dubbo.samples.CommentService:1.0:group-a.affinity-router',
+      expect.objectContaining({ key: 'org.apache.dubbo.samples.CommentService:1.0:group-a' })
+    )
+  })
+
   it('creates script rules with the consumer-supported JavaScript template', async () => {
     mocks.addRouterRuleAPI.mockResolvedValue({ code: HTTP_STATUS.SUCCESS })
     const wrapper = mountEditor('script-rule')
