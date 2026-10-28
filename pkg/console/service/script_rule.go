@@ -21,8 +21,10 @@ import (
 	"github.com/duke-git/lancet/v2/slice"
 	"github.com/duke-git/lancet/v2/strutil"
 
+	"github.com/apache/dubbo-admin/pkg/common/bizerror"
 	consolectx "github.com/apache/dubbo-admin/pkg/console/context"
 	"github.com/apache/dubbo-admin/pkg/console/model"
+	"github.com/apache/dubbo-admin/pkg/core/logger"
 	"github.com/apache/dubbo-admin/pkg/core/manager"
 	meshresource "github.com/apache/dubbo-admin/pkg/core/resource/apis/mesh/v1alpha1"
 	coremodel "github.com/apache/dubbo-admin/pkg/core/resource/model"
@@ -32,7 +34,11 @@ import (
 func GetScriptRule(ctx consolectx.Context, name, mesh string) (*meshresource.ScriptRouteResource, error) {
 	res, _, err := manager.GetByKey[*meshresource.ScriptRouteResource](
 		ctx.ResourceManager(), meshresource.ScriptRouteKind, coremodel.BuildResourceKey(mesh, name))
-	return res, err
+	if err != nil {
+		logger.Warnf("get script rule %s error: %v", name, err)
+		return nil, err
+	}
+	return res, nil
 }
 
 func SearchScriptRules(ctx consolectx.Context, req *model.SearchConditionRuleReq) (*model.SearchPaginationResult, error) {
@@ -55,7 +61,8 @@ func SearchScriptRules(ctx consolectx.Context, req *model.SearchConditionRuleReq
 		ctx.ResourceManager(), meshresource.ScriptRouteKind,
 		[]index.IndexCondition{{IndexName: index.ByMeshIndex, Value: req.Mesh, Operator: index.Equals}}, req.PageReq)
 	if err != nil {
-		return nil, err
+		logger.Errorf("search script route error: %v", err)
+		return nil, bizerror.New(bizerror.InternalError, "search script route failed, please try again")
 	}
 	list := slice.FilterMap(page.Data, func(_ int, item *meshresource.ScriptRouteResource) (*model.RouterRuleSearchResp, bool) {
 		if item == nil || item.Spec == nil {

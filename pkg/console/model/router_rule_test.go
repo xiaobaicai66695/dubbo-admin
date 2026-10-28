@@ -51,7 +51,7 @@ script: return invokers;
 	require.Contains(t, string(raw), "enabled: true")
 }
 
-func TestAffinityRuleDetailRoundTripPreservesOptionalRuntimeAndNormalizesEnabled(t *testing.T) {
+func TestAffinityRuleDetailRoundTripKeepsOmittedEnabledDisabled(t *testing.T) {
 	source, err := meshresource.DecodeRule(meshresource.AffinityRouteKind, "mesh", "demo.affinity-router", `
 configVersion: v3.1
 scope: application
@@ -65,11 +65,11 @@ affinityAware:
 	input := GenAffinityRuleResp(source.(*meshresource.AffinityRouteResource)).Data.(AffinityRuleInput)
 	require.Nil(t, input.Runtime)
 	require.NotNil(t, input.Enabled)
-	require.True(t, *input.Enabled)
+	require.False(t, *input.Enabled)
 	body, err := json.Marshal(input)
 	require.NoError(t, err)
 	require.NotContains(t, string(body), `"runtime"`)
-	require.Contains(t, string(body), `"enabled":true`)
+	require.Contains(t, string(body), `"enabled":false`)
 
 	restored := meshresource.NewAffinityRouteResourceWithAttributes("demo.affinity-router", "mesh")
 	restored.Spec = input.ToProto()
@@ -77,7 +77,7 @@ affinityAware:
 	raw, err := meshresource.EncodeRule(restored)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "runtime:")
-	require.Contains(t, string(raw), "enabled: true")
+	require.Contains(t, string(raw), "enabled: false")
 }
 
 func TestScriptRuleDetailRoundTripPreservesExplicitFalse(t *testing.T) {

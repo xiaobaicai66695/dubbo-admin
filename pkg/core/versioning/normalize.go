@@ -259,7 +259,10 @@ func affinityResourceFromSnapshot(mesh, ruleName, specJSON string) (coremodel.Re
 		runtime = nil
 	}
 	if contains(snapshot.OmittedFields, "enabled") {
-		enabled = nil
+		// Earlier snapshots can record an omitted Affinity enabled field.
+		// Dubbo-Go treats that field as false, including after rollback.
+		disabled := false
+		enabled = &disabled
 	}
 	meshresource.SetAffinityRuleOptionalFields(res, runtime, enabled)
 	return res, true, nil

@@ -98,13 +98,26 @@ affinityAware:
 	raw, err := meshresource.EncodeRule(restored)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "runtime:")
-	require.Contains(t, string(raw), "enabled: true")
+	require.Contains(t, string(raw), "enabled: false")
 
 	restored, err = ResourceFromSpecJSON(meshresource.AffinityRouteKind, "mesh", "demo.affinity-router", explicitSnapshot)
 	require.NoError(t, err)
 	raw, err = meshresource.EncodeRule(restored)
 	require.NoError(t, err)
 	require.Contains(t, string(raw), "runtime: false")
+	require.Contains(t, string(raw), "enabled: false")
+}
+
+func TestAffinityLegacySnapshotWithOmittedEnabledRemainsDisabled(t *testing.T) {
+	resource, err := ResourceFromSpecJSON(meshresource.AffinityRouteKind, "mesh", "demo.affinity-router", `{
+		"format":"router-rule/v1",
+		"spec":{"configVersion":"v3.1","scope":"application","key":"demo","enabled":true,"affinity":{"key":"region","ratio":50}},
+		"omittedFields":["runtime","enabled"]
+	}`)
+	require.NoError(t, err)
+	raw, err := meshresource.EncodeRule(resource)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "runtime:")
 	require.Contains(t, string(raw), "enabled: false")
 }
 

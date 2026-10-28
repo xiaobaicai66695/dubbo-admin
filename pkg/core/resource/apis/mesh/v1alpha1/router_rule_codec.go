@@ -139,7 +139,9 @@ func DecodeRule(kind coremodel.ResourceKind, mesh, name, data string) (coremodel
 		res.Spec.ConfigVersion = external.ConfigVersion
 		res.Spec.Scope = external.Scope
 		res.Spec.Key = external.Key
-		res.Spec.Enabled = true
+		// Dubbo-Go unmarshals Affinity's scalar enabled field into a zero
+		// value. An omitted field therefore leaves existing rules disabled.
+		// Keep that behavior when loading rules from a config center.
 		if external.Runtime != nil {
 			res.Spec.Runtime = *external.Runtime
 			clearRuleBooleanOmitted(&res.Annotations, affinityRuntimeOmittedAnnotation)
@@ -196,8 +198,8 @@ func optionalRuleBool(value bool, annotations map[string]string, omittedAnnotati
 }
 
 // AffinityRuleOptionalFields returns the public Affinity values. Runtime is
-// optional, while Enabled is normalized because an omitted enabled field can
-// silently disable the rule in consumers.
+// optional. Enabled reflects the effective value seen by Affinity consumers;
+// an omitted field in an existing rule is false.
 func AffinityRuleOptionalFields(res *AffinityRouteResource) (runtime *bool, enabled *bool) {
 	if res == nil || res.Spec == nil {
 		return nil, nil
