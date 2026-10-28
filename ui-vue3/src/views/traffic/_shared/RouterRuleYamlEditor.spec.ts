@@ -18,6 +18,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
+import { message } from 'ant-design-vue'
 import yaml from 'js-yaml'
 import { HTTP_STATUS } from '@/base/http/constants'
 import type RouterRuleYamlEditorType from './RouterRuleYamlEditor.vue'
@@ -119,6 +120,7 @@ beforeEach(() => {
   mocks.updateRouterRuleAPI.mockReset()
   mocks.push.mockReset()
   mocks.route.params = {}
+  vi.mocked(message.error).mockClear()
 })
 
 const mountEditor = (kind: 'affinity-rule' | 'script-rule') =>
@@ -143,6 +145,26 @@ const mountEditor = (kind: 'affinity-rule' | 'script-rule') =>
   })
 
 describe('RouterRuleYamlEditor', () => {
+  it.each(['affinity-rule', 'script-rule'] as const)(
+    'keeps edited %s YAML when saving fails',
+    async (kind) => {
+      mocks.addRouterRuleAPI.mockRejectedValue(new Error('save failed'))
+      const wrapper = mountEditor(kind)
+      await flushPromises()
+
+      const editor = wrapper.find('[data-test="yaml-editor"]')
+      const editedYaml = `${(editor.element as HTMLTextAreaElement).value}\n# keep this edit\n`
+      await editor.setValue(editedYaml)
+      await wrapper.findAll('button')[0].trigger('click')
+      await flushPromises()
+
+      expect((editor.element as HTMLTextAreaElement).value).toBe(editedYaml)
+      expect(mocks.push).not.toHaveBeenCalled()
+      expect(message.error).toHaveBeenCalledWith('save failed')
+      expect(wrapper.findAll('button')[0].attributes('disabled')).toBeUndefined()
+    }
+  )
+
   it('creates affinity rules with the key-derived affinity suffix', async () => {
     mocks.addRouterRuleAPI.mockResolvedValue({ code: HTTP_STATUS.SUCCESS })
     const wrapper = mountEditor('affinity-rule')

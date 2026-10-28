@@ -38,6 +38,7 @@ test: clean
 # Run the RouterChain E2E suite with its independent Go 1.25 / Dubbo-Go v3.3.2 module graph.
 # Set DUBBO_ADMIN_E2E_ZK_ADDR and DUBBO_ADMIN_E2E_NACOS_ADDR to exercise the real config centers.
 # Both host:port (for example 127.0.0.1:2181) and complete URLs are accepted.
+# Example: DUBBO_ADMIN_E2E_ZK_ADDR=127.0.0.1:2181 DUBBO_ADMIN_E2E_NACOS_ADDR=http://127.0.0.1:8848 make test-router-rule-chain-e2e
 test-router-rule-chain-e2e:
 	go test -modfile ./go.router-e2e.mod -mod=mod -tags=e2e -count=1 ./e2e/router-rule-chain
 
