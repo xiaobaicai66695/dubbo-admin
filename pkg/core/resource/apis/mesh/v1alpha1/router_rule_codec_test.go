@@ -63,7 +63,7 @@ func TestScriptRuleCodecAndValidation(t *testing.T) {
 	require.Error(t, ValidateRule(res))
 }
 
-func TestRouterRuleCodecPreservesOptionalAffinityRuntimeAndNormalizesEnabled(t *testing.T) {
+func TestRouterRuleCodecKeepsOmittedAffinityDisabledAndNormalizesScript(t *testing.T) {
 	affinityYAML := "configVersion: v3.1\n" +
 		"scope: application\n" +
 		"key: demo\n" +
@@ -72,14 +72,15 @@ func TestRouterRuleCodecPreservesOptionalAffinityRuntimeAndNormalizesEnabled(t *
 		"  ratio: 50\n"
 	affinity, err := DecodeRule(AffinityRouteKind, "mesh", "demo.affinity-router", affinityYAML)
 	require.NoError(t, err)
+	require.False(t, affinity.(*AffinityRouteResource).Spec.Enabled)
 	affinityRaw, err := EncodeRule(affinity)
 	require.NoError(t, err)
 	require.NotContains(t, string(affinityRaw), "runtime:")
-	require.Contains(t, string(affinityRaw), "enabled: true")
+	require.Contains(t, string(affinityRaw), "enabled: false")
 	copyRaw, err := EncodeRule(affinity.(*AffinityRouteResource).DeepCopyObject().(*AffinityRouteResource))
 	require.NoError(t, err)
 	require.NotContains(t, string(copyRaw), "runtime:")
-	require.Contains(t, string(copyRaw), "enabled: true")
+	require.Contains(t, string(copyRaw), "enabled: false")
 
 	scriptYAML := "configVersion: v3.0\n" +
 		"scope: application\n" +
